@@ -133,7 +133,14 @@ abline(v=50)
 Clean up data
 ```{r}
 OV_top50 =getGeneSummary(OV_maf)[1:50]
-oncoplot(OV_maf, genes= OV_top50$Hugo_Symbol, fontSize = 0.3, legendFontSize=1, annotationFontSize =1, groupAnnotationBySize= TRUE, sortByMutation=TRUE)
+top1to25= OV_top50[1:25]
+top25to50= OV_top50[26:50]
+
+#1-25
+oncoplot(OV_maf, genes= top1to25$Hugo_Symbol, fontSize = 0.5, legendFontSize=1, annotationFontSize =1, groupAnnotationBySize= TRUE, sortByMutation=TRUE)
+
+#26-50
+oncoplot(OV_maf, genes= top25to50$Hugo_Symbol, fontSize = 0.5, legendFontSize=1, annotationFontSize =1, groupAnnotationBySize= TRUE, sortByMutation=TRUE)
          #, font Size = "sigpw", gene_mar = 8, fontSize = 0.2)
 
 ```
