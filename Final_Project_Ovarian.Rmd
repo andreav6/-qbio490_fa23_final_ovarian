@@ -139,6 +139,7 @@ oncoplot(OV_maf, genes= OV_top50$Hugo_Symbol, fontSize = 0.3, legendFontSize=1, 
 ```
 
 ```{r}
+#this is not needed, i just waned to see :p
 somaticInteractions(OV_maf, top=30, pvalue= c(0.01, 0.05), fontSize=0.4, countsFontSize=0.4, returnAll=TRUE)
 ```
 
