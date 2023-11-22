@@ -1,0 +1,144 @@
+---
+title: "QBIO490_final_project_EDA_ovarian"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+Directory set up, package download, and library loading
+```{r}
+#set directory
+knitr::opts_knit$set(root.dir = normalizePath("/Users/andreavelazquez/Desktop/School stuff/QBIO490/qbio_490_AndreaV/analysis_data")) 
+
+
+#Check if packages are ready to be loaded, if not download them
+if(!require(BiocManager)) {
+    install.packages("BiocManager")
+}
+
+if(!require(TCGAbiolinks)) {
+    install.packages("TCGAbiolinks")
+}
+
+if(!require(maftools)) {
+    install.packages("maftools")
+}
+
+if (!require(survival)) {
+  install.packages("survival")
+}
+
+if (!require(survminer)) {
+  install.packages("survminer")
+}
+
+if (!require(ggplot2)) {
+  install.packages("ggplot2")
+}
+
+if (!require(DESeq2)) {
+  install.packages("DESeq2")
+}
+
+if (!require(SummarizedExperiment)) {
+  install.packages("SummarizedExperiment")
+}
+
+if (!require(EnhancedVolcano)) {
+  install.packages("EnhancedVolcano")
+}
+
+
+#Load packages
+library(BiocManager)
+library(TCGAbiolinks)
+library(maftools)
+library(survival)
+library(survminer)
+library(ggplot2)
+library(DESeq2)
+library(SummarizedExperiment)
+library(EnhancedVolcano)
+
+```
+
+
+
+Querying data
+```{r}
+#===============================================================================
+#Query clinical data
+clin_query <- GDCquery(project = "TCGA-OV",
+              data.category = "Clinical",
+              data.type = "Clinical Supplement",
+              data.format = 'BCR Biotab')
+
+GDCdownload(clin_query)
+clinical.BCRtab.all <- GDCprepare(clin_query)
+  
+clinic <- clinical.BCRtab.all$clinical_patient_brca[-c(1,2),]
+rad<- clinical.BCRtab.all$clinical_radiation_skcm[-c(1, 2), ]
+drugs<- clinical.BCRtab.all$clinical_drug_skcm[-c(1, 2), ]
+
+#===============================================================================
+#Query rna data
+rna_query <- GDCquery(project ="TCGA-OV",
+            data.category = "Transcriptome Profiling",
+            data.type = "Gene Expression Quantification",
+            workflow.type = "STAR - Counts")
+
+#Download. Comment out after first time
+GDCdownload(rna_query)
+rna_se <- GDCprepare(rna_query)
+#make df from rna_se object w clinical data
+rna_clinical<- rna_se@colData
+rna_clinical<- as.data.frame(rna_clinical)
+colnames(rna_clinical)[ colnames(rna_clinical) == "patient" ] <- "Tumor_Sample_Barcode"
+
+#===============================================================================
+#Query maf data
+maf_query <- GDCquery(project = "TCGA-OV",
+                      data.category = "Simple Nucleotide Variation",
+                      access = "open",
+                      data.type = "Masked Somatic Mutation",
+                      workflow.type = "Aliquot Ensemble Somatic Variant Merging and Masking")
+
+#Download. Comment out after first time
+GDCdownload(maf_query)
+maf <- GDCprepare(maf_query)
+OV_maf <- read.maf(maf = maf,
+                     clinicalData = rna_clinical,
+                     isTCGA = TRUE)
+
+#===============================================================================
+```
+```{r}
+mutationsdf= getGeneSummary(OV_maf)
+mutationsdf$percent= mutationsdf$MutatedSamples/407
+nums<- 1:100
+
+plot(nums, 
+     mutationsdf$percent[1:100], 
+     pch=20,
+     col= ifelse(mutationsdf$percent>= 0.034, 
+                 "red", 
+                 "black"),
+     xlab= "nth most mutated gene",
+     ylab= "Percent of samples mutated")
+abline(v=50)
+
+```
+
+
+Clean up data
+```{r}
+OV_top50 =getGeneSummary(OV_maf)[1:50]
+oncoplot(OV_maf, genes= OV_top50$Hugo_Symbol, fontSize = 0.3, legendFontSize=1, annotationFontSize =1, groupAnnotationBySize= TRUE, sortByMutation=TRUE)
+         #, font Size = "sigpw", gene_mar = 8, fontSize = 0.2)
+
+```
+
+```{r}
+somaticInteractions(OV_maf, top=30, pvalue= c(0.01, 0.05), fontSize=0.4, countsFontSize=0.4, returnAll=TRUE)
+```
+
