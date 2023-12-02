@@ -4,6 +4,7 @@ output: html_notebook
 editor_options: 
   chunk_output_type: console
 ---
+Group members: Rebecca Aviles Barahona, Jeanne Michelle Revilla, Andrea Velazquez
 
 Directory set up, package download, and library loading
 ```{r}
@@ -113,7 +114,7 @@ OV_maf <- read.maf(maf = maf,
 #===============================================================================
 ```
 
-Write data into csv 
+Write data into csv for python analysis
 ```{r}
 rna_clinical <- rna_se@colData
 rna_clinical <- as.data.frame(rna_clinical)
@@ -145,65 +146,12 @@ rna_genes<- rna_genes[lowcount_mask, ]
 ```
 
 
-See the percentage of samples that have mutations in the nth most mutated gene
-```{r}
-mutationsdf= getGeneSummary(OV_maf)
-mutationsdf$percent= mutationsdf$MutatedSamples/407
-nums<- 1:100
-
-plot(nums, 
-     mutationsdf$percent[1:100], 
-     pch=20,
-     col= ifelse(mutationsdf$percent>= 0.034, 
-                 "red", 
-                 "black"),
-     xlab= "nth most mutated gene",
-     ylab= "Percent of samples mutated", main= "% of Samples Mutated for Each nth Most Mutated Gene")
-abline(v=50)
-
-```
-
-Clean up data and create oncoplots
-```{r}
-OV_top50 =getGeneSummary(OV_maf)[1:50]
-top1to25= OV_top50[1:25]
-top25to50= OV_top50[26:50]
-
-#1-25
-oncoplot(OV_maf, 
-         genes= top1to25$Hugo_Symbol, 
-         fontSize = 0.5, legendFontSize=1, 
-         annotationFontSize =1, 
-         groupAnnotationBySize= TRUE, 
-         sortByMutation=TRUE, 
-         titleText= "1st-25th Most Mutated Genes in Ovarian Cancer Tumor Samples (TCGA dataset)")
-
-#26-50
-oncoplot(OV_maf, 
-         genes= top25to50$Hugo_Symbol, 
-         fontSize = 0.5, 
-         legendFontSize=1, 
-         annotationFontSize =1, 
-         groupAnnotationBySize= TRUE, 
-         sortByMutation=TRUE,
-         titleText= "26th-50th Most Mutated Genes in Ovarian Cancer Tumor Samples (TCGA dataset)")
-         #, font Size = "sigpw", gene_mar = 8, fontSize = 0.2)
-
-```
-
-```{r}
-#this is not needed, i just waned to see :p
-somaticInteractions(OV_maf, top=30, pvalue= c(0.01, 0.05), fontSize=0.4, countsFontSize=0.4, returnAll=TRUE)
-```
-
-
 Survival plots
-
+For all clusters:
 ```{r}
+#knitr::opts_knit$set(root.dir = normalizePath("/Users/mi/Desktop/QBIO/qbio_490_jeanneR/analysis_data")) 
 
-knitr::opts_knit$set(root.dir = normalizePath("/Users/mi/Desktop/QBIO/qbio_490_jeanneR/analysis_data")) 
-
-cluster_data <- read.csv("/Users/mi/Desktop/QBIO/qbio_490_jeanneR/analysis_data/cluster_barcodes.csv")
+#cluster_data <- read.csv("/Users/mi/Desktop/QBIO/qbio_490_jeanneR/analysis_data/cluster_barcodes.csv")
 
 
 cl0<- subset(cluster_data, label==0)$X0
@@ -258,7 +206,7 @@ KM_plot
 
 ```
 
-
+For each combination of clusters:
 ```{r}
 #subsetting out 0 vs 2
 rna_clinical_02 <-subset(rna_clinical, cluster_label==0 | cluster_label==2)
@@ -399,7 +347,7 @@ KM_plot
 
 ```
 
-
+Seeing if any samples are metastatic
 ```{r}
 #computing numbers of metastatic in rna_clinical for each cluster
 age_NA_mask <- !is.na(rna_clinical$age_at_diagnosis)
@@ -424,10 +372,6 @@ print(cluster3_mean_days/365)
 
 print(mean(rna_clinical_clean$age_at_diagnosis/365))
 
-```
-
-```{r}
-rna_clinical$ethnicity
 ```
 
 
