@@ -1,0 +1,433 @@
+---
+title: "QBIO490_final_project_EDA_ovarian"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+Directory set up, package download, and library loading
+```{r}
+#set directory
+knitr::opts_knit$set(root.dir = normalizePath("/Users/andreavelazquez/Desktop/QBIO/qbio_490_jeanneR/analysis_data")) 
+
+
+#Check if packages are ready to be loaded, if not download them
+if(!require(BiocManager)) {
+    install.packages("BiocManager")
+}
+
+if(!require(TCGAbiolinks)) {
+    install.packages("TCGAbiolinks")
+}
+
+if(!require(maftools)) {
+    install.packages("maftools")
+}
+
+if (!require(survival)) {
+  install.packages("survival")
+}
+
+if (!require(survminer)) {
+  install.packages("survminer")
+}
+
+if (!require(ggplot2)) {
+  install.packages("ggplot2")
+}
+
+if (!require(DESeq2)) {
+  install.packages("DESeq2")
+}
+
+if (!require(SummarizedExperiment)) {
+  install.packages("SummarizedExperiment")
+}
+
+if (!require(EnhancedVolcano)) {
+  install.packages("EnhancedVolcano")
+}
+
+
+#Load packages
+library(BiocManager)
+library(TCGAbiolinks)
+library(maftools)
+library(survival)
+library(survminer)
+library(ggplot2)
+library(DESeq2)
+library(SummarizedExperiment)
+library(EnhancedVolcano)
+
+```
+
+
+
+Querying data
+```{r}
+#===============================================================================
+#Query clinical data
+clin_query <- GDCquery(project = "TCGA-OV",
+              data.category = "Clinical",
+              data.type = "Clinical Supplement",
+              data.format = "BCR Biotab")
+
+#GDCdownload(clin_query)
+clinical.BCRtab.all <- GDCprepare(clin_query)
+  
+clinic <- clinical.BCRtab.all$clinical_patient_brca[-c(1,2),]
+rad<- clinical.BCRtab.all$clinical_radiation_skcm[-c(1, 2), ]
+drugs<- clinical.BCRtab.all$clinical_drug_skcm[-c(1, 2), ]
+
+#===============================================================================
+#Query rna data
+rna_query <- GDCquery(project ="TCGA-OV",
+            data.category = "Transcriptome Profiling",
+            data.type = "Gene Expression Quantification",
+            workflow.type = "STAR - Counts")
+
+#Download. Comment out after first time
+#GDCdownload(rna_query)
+rna_se <- GDCprepare(rna_query)
+#make df from rna_se object w clinical data
+rna_clinical<- rna_se@colData
+rna_clinical<- as.data.frame(rna_clinical)
+colnames(rna_clinical)[ colnames(rna_clinical) == "patient" ] <- "Tumor_Sample_Barcode"
+
+#===============================================================================
+#Query maf data
+maf_query <- GDCquery(project = "TCGA-OV",
+                      data.category = "Simple Nucleotide Variation",
+                      access = "open",
+                      data.type = "Masked Somatic Mutation",
+                      workflow.type = "Aliquot Ensemble Somatic Variant Merging and Masking")
+
+#Download. Comment out after first time
+#GDCdownload(maf_query)
+maf <- GDCprepare(maf_query)
+OV_maf <- read.maf(maf = maf,
+                     clinicalData = rna_clinical,
+                     isTCGA = TRUE)
+
+#===============================================================================
+```
+
+Write data into csv 
+```{r}
+rna_clinical <- rna_se@colData
+rna_clinical <- as.data.frame(rna_clinical)
+
+#get data from rna_se object
+rna_counts<- rna_se@assays@data$unstranded
+rna_counts<- as.data.frame(rna_counts)
+
+#Get gene info
+rna_genes<- rna_se@rowRanges@elementMetadata
+rna_genes<- as.data.frame(rna_genes)
+
+#change for easier reading/knowing whats what
+rownames(rna_genes)<- rna_genes$gene_id
+rownames(rna_counts)<- rna_genes$gene_id
+
+#pt barcodes
+colnames(rna_counts)<- rownames(rna_clinical)
+rna_counts<- t(rna_counts)
+colnames(rna_counts)<- rna_genes$gene_name
+
+lowcount_mask<- ifelse(colSums(rna_counts) < 20, F, T)
+rna_counts<- rna_counts[, lowcount_mask]
+rna_genes<- rna_genes[lowcount_mask, ]
+
+#out
+#write.csv(x=rna_counts, file= "/Users/andreavelazquez/Desktop/School stuff/QBIO490/qbio490_fa23_final_ovarian/OV_rna_count.csv")
+
+```
+
+
+See the percentage of samples that have mutations in the nth most mutated gene
+```{r}
+mutationsdf= getGeneSummary(OV_maf)
+mutationsdf$percent= mutationsdf$MutatedSamples/407
+nums<- 1:100
+
+plot(nums, 
+     mutationsdf$percent[1:100], 
+     pch=20,
+     col= ifelse(mutationsdf$percent>= 0.034, 
+                 "red", 
+                 "black"),
+     xlab= "nth most mutated gene",
+     ylab= "Percent of samples mutated", main= "% of Samples Mutated for Each nth Most Mutated Gene")
+abline(v=50)
+
+```
+
+Clean up data and create oncoplots
+```{r}
+OV_top50 =getGeneSummary(OV_maf)[1:50]
+top1to25= OV_top50[1:25]
+top25to50= OV_top50[26:50]
+
+#1-25
+oncoplot(OV_maf, 
+         genes= top1to25$Hugo_Symbol, 
+         fontSize = 0.5, legendFontSize=1, 
+         annotationFontSize =1, 
+         groupAnnotationBySize= TRUE, 
+         sortByMutation=TRUE, 
+         titleText= "1st-25th Most Mutated Genes in Ovarian Cancer Tumor Samples (TCGA dataset)")
+
+#26-50
+oncoplot(OV_maf, 
+         genes= top25to50$Hugo_Symbol, 
+         fontSize = 0.5, 
+         legendFontSize=1, 
+         annotationFontSize =1, 
+         groupAnnotationBySize= TRUE, 
+         sortByMutation=TRUE,
+         titleText= "26th-50th Most Mutated Genes in Ovarian Cancer Tumor Samples (TCGA dataset)")
+         #, font Size = "sigpw", gene_mar = 8, fontSize = 0.2)
+
+```
+
+```{r}
+#this is not needed, i just waned to see :p
+somaticInteractions(OV_maf, top=30, pvalue= c(0.01, 0.05), fontSize=0.4, countsFontSize=0.4, returnAll=TRUE)
+```
+
+
+Survival plots
+
+```{r}
+
+knitr::opts_knit$set(root.dir = normalizePath("/Users/mi/Desktop/QBIO/qbio_490_jeanneR/analysis_data")) 
+
+cluster_data <- read.csv("/Users/mi/Desktop/QBIO/qbio_490_jeanneR/analysis_data/cluster_barcodes.csv")
+
+
+cl0<- subset(cluster_data, label==0)$X0
+cl1<- subset(cluster_data, label==1)$X0
+cl2<- subset(cluster_data, label==2)$X0
+cl3<- subset(cluster_data, label==3)$X0
+
+c0_or_1_mask<- ifelse(rna_clinical$cluster_label == 1, 
+                 T, ifelse(rna_clinical$cluster_label == 2, 
+                        T, 
+                        F))
+
+
+rna_clinical$cluster_label<- cluster_data$label #mask out the -1 column
+rna_clinical<- subset(rna_clinical, cluster_label!= -1)
+
+#general cleaning for the KM plots
+rna_clinical$survival_time<- ifelse(rna_clinical$vital_status == "Alive", 
+                                    rna_clinical$days_to_last_follow_up, 
+                                    rna_clinical$days_to_death)
+
+rna_clinical$survival_time<- as.numeric(rna_clinical$survival_time)
+
+
+rna_clinical$death_event<- ifelse(rna_clinical$vital_status== "Alive", F, T)
+
+
+#subsetting out 0 vs 1
+rna_clinical_01 <-subset(rna_clinical, cluster_label==0 | cluster_label==1)
+
+#Create survival object
+survival_object <- Surv(time = rna_clinical_01$survival_time,
+                        event = rna_clinical_01$death_event)
+
+fit_object <- survfit(survival_object ~ cluster_label, data = rna_clinical_01)
+
+
+
+#Plot
+survplot <- ggsurvplot(fit_object,
+                       pval=TRUE,
+                       ggtheme = theme(plot.margin = unit(c(1,1,1,1), "cm")),
+                       legend = 'right', 
+                       legend.labs= c("Cluster 0", "Cluster 1"))
+
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
+                                              axis.text = element_text(size=16),
+                                              legend.title = element_text(size=14),
+                                              legend.text = element_text(size=12))
+
+KM_plot
+
+```
+
+
+```{r}
+#subsetting out 0 vs 2
+rna_clinical_02 <-subset(rna_clinical, cluster_label==0 | cluster_label==2)
+
+#Create survival object
+survival_object <- Surv(time = rna_clinical_02$survival_time,
+                        event = rna_clinical_02$death_event)
+
+fit_object <- survfit(survival_object ~ cluster_label, data = rna_clinical_02)
+
+
+
+#Plot
+survplot <- ggsurvplot(fit_object,
+                       pval=TRUE,
+                       ggtheme = theme(plot.margin = unit(c(1,1,1,1), "cm")),
+                       legend = 'right', 
+                       legend.labs= c("Cluster 0", "Cluster 2"))
+
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
+                                              axis.text = element_text(size=16),
+                                              legend.title = element_text(size=14),
+                                              legend.text = element_text(size=12))
+
+KM_plot
+
+```
+
+```{r}
+#subsetting out 0 vs 3
+rna_clinical_03 <-subset(rna_clinical, cluster_label==0 | cluster_label==3)
+
+#Create survival object
+survival_object <- Surv(time = rna_clinical_03$survival_time,
+                        event = rna_clinical_03$death_event)
+
+fit_object <- survfit(survival_object ~ cluster_label, data = rna_clinical_03)
+
+
+
+#Plot
+survplot <- ggsurvplot(fit_object,
+                       pval=TRUE,
+                       ggtheme = theme(plot.margin = unit(c(1,1,1,1), "cm")),
+                       legend = 'right', 
+                       legend.labs= c("Cluster 0", "Cluster 3"))
+
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
+                                              axis.text = element_text(size=16),
+                                              legend.title = element_text(size=14),
+                                              legend.text = element_text(size=12))
+
+KM_plot
+
+```
+
+```{r}
+#subsetting out 1 vs 2
+rna_clinical_12 <-subset(rna_clinical, cluster_label==1 | cluster_label==2)
+
+#Create survival object
+survival_object <- Surv(time = rna_clinical_12$survival_time,
+                        event = rna_clinical_12$death_event)
+
+fit_object <- survfit(survival_object ~ cluster_label, data = rna_clinical_12)
+
+
+
+#Plot
+survplot <- ggsurvplot(fit_object,
+                       pval=TRUE,
+                       ggtheme = theme(plot.margin = unit(c(1,1,1,1), "cm")),
+                       legend = 'right', 
+                       legend.labs= c("Cluster 1", "Cluster 2"))
+
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
+                                              axis.text = element_text(size=16),
+                                              legend.title = element_text(size=14),
+                                              legend.text = element_text(size=12))
+
+KM_plot
+
+```
+
+```{r}
+#subsetting out 1 vs 3
+rna_clinical_13 <-subset(rna_clinical, cluster_label==1 | cluster_label==3)
+
+#Create survival object
+survival_object <- Surv(time = rna_clinical_13$survival_time,
+                        event = rna_clinical_13$death_event)
+
+fit_object <- survfit(survival_object ~ cluster_label, data = rna_clinical_13)
+
+
+
+#Plot
+survplot <- ggsurvplot(fit_object,
+                       pval=TRUE,
+                       ggtheme = theme(plot.margin = unit(c(1,1,1,1), "cm")),
+                       legend = 'right', 
+                       legend.labs= c("Cluster 1", "Cluster 3"))
+
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
+                                              axis.text = element_text(size=16),
+                                              legend.title = element_text(size=14),
+                                              legend.text = element_text(size=12))
+
+KM_plot
+
+```
+
+```{r}
+#subsetting out 2 vs 3
+rna_clinical_23 <-subset(rna_clinical, cluster_label==2 | cluster_label==3)
+
+#Create survival object
+survival_object <- Surv(time = rna_clinical_23$survival_time,
+                        event = rna_clinical_23$death_event)
+
+fit_object <- survfit(survival_object ~ cluster_label, data = rna_clinical_23)
+
+
+
+#Plot
+survplot <- ggsurvplot(fit_object,
+                       pval=TRUE,
+                       ggtheme = theme(plot.margin = unit(c(1,1,1,1), "cm")),
+                       legend = 'right', 
+                       legend.labs= c("Cluster 2", "Cluster 3"))
+
+KM_plot <- survplot$plot + theme_bw() + theme(axis.title = element_text(size=20), 
+                                              axis.text = element_text(size=16),
+                                              legend.title = element_text(size=14),
+                                              legend.text = element_text(size=12))
+
+KM_plot
+
+```
+
+
+```{r}
+#computing numbers of metastatic in rna_clinical for each cluster
+age_NA_mask <- !is.na(rna_clinical$age_at_diagnosis)
+rna_clinical_clean<- rna_clinical[age_NA_mask,]
+
+rna_clinical_clean$age_at_diagnosis <- as.numeric(rna_clinical_clean$age_at_diagnosis)
+
+rna_clinical_0 <- subset(rna_clinical_clean, cluster_label == 0)
+rna_clinical_1 <- subset(rna_clinical_clean, cluster_label == 1)
+rna_clinical_2 <- subset(rna_clinical_clean, cluster_label == 2)
+rna_clinical_3 <- subset(rna_clinical_clean, cluster_label == 3)
+
+cluster0_mean_days <- mean(rna_clinical_0$age_at_diagnosis)
+cluster1_mean_days <- mean(rna_clinical_1$age_at_diagnosis)
+cluster2_mean_days <- mean(rna_clinical_2$age_at_diagnosis)
+cluster3_mean_days <- mean(rna_clinical_3$age_at_diagnosis)
+
+print(cluster0_mean_days/365)
+print(cluster1_mean_days/365)
+print(cluster2_mean_days/365)
+print(cluster3_mean_days/365)
+
+print(mean(rna_clinical_clean$age_at_diagnosis/365))
+
+```
+
+```{r}
+rna_clinical$ethnicity
+```
+
+
